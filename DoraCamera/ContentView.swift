@@ -209,7 +209,7 @@ struct ContentView: View {
     private var optionsRow: some View {
         if let tool = expandedTool {
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
+                HStack(spacing: 8) {
                     switch tool {
                     case .frameRate:
                         ForEach(camera.availableFrameRates, id: \.self) { fps in
@@ -234,7 +234,7 @@ struct ContentView: View {
                         }
                     }
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, 8)
             }
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
@@ -279,12 +279,13 @@ struct ContentView: View {
             Text(text)
                 .font(.system(size: 13, weight: .semibold, design: .rounded))
                 .foregroundStyle(selected ? .black : .white)
-                .frame(minWidth: 56, minHeight: 44)
-                .padding(.horizontal, 10)
+                .frame(minWidth: 44, minHeight: 36)
+                .padding(.horizontal, 6)
                 .background(
                     selected ? AnyShapeStyle(.white) : AnyShapeStyle(.black.opacity(0.4)),
-                    in: RoundedRectangle(cornerRadius: 12)
+                    in: RoundedRectangle(cornerRadius: 10)
                 )
+                .upright(camera.controlRotationDegrees)
         }
     }
 
