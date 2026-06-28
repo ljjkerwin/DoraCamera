@@ -325,7 +325,7 @@ struct ContentView: View {
                         .foregroundStyle(.white)
                 }
             }
-            .frame(width: 50, height: 50)
+            .frame(width: 44, height: 44)
             .background(.black.opacity(0.4))
             .clipShape(Circle())
             .overlay {
@@ -357,9 +357,9 @@ struct ContentView: View {
             camera.switchCamera()
         } label: {
             Image(systemName: "arrow.triangle.2.circlepath.camera")
-                .font(.title2)
+                .font(.title3)
                 .foregroundStyle(.white)
-                .frame(width: 50, height: 50)
+                .frame(width: 44, height: 44)
                 .background(.black.opacity(0.4), in: Circle())
                 .upright(camera.controlRotationDegrees)
         }
