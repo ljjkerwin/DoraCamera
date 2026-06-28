@@ -29,7 +29,7 @@ final class CameraManager: NSObject, ObservableObject {
     @Published var recordedDuration: TimeInterval = 0
     /// 可选帧率（含高帧率，以及低于官方相机的 24fps 的低帧率）
     @Published var availableFrameRates: [Int] = [60, 30, 24, 18, 15, 12, 8]
-    @Published var selectedFrameRate: Int = 15 {
+    @Published var selectedFrameRate: Int = 60 {
         didSet {
             guard selectedFrameRate != oldValue else { return }
             UserDefaults.standard.set(selectedFrameRate, forKey: Self.kFrameRate)
