@@ -257,10 +257,10 @@ struct ContentView: View {
                 .font(.system(size: 14, weight: .semibold, design: .rounded))
         }
         .foregroundStyle(active ? .black : .white)
-        .frame(minWidth: 52, minHeight: 38)
-        .padding(.horizontal, 8)
+        .frame(minWidth: 46, minHeight: 34)
+        .padding(.horizontal, 6)
         .background(
-            active ? AnyShapeStyle(.yellow) : AnyShapeStyle(.black.opacity(0.4)),
+            active ? AnyShapeStyle(.yellow) : AnyShapeStyle(.black.opacity(0.25)),
             in: RoundedRectangle(cornerRadius: 10)
         )
         .upright(camera.controlRotationDegrees)
