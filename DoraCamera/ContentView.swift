@@ -75,6 +75,7 @@ struct ContentView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .background(.black.opacity(0.4), in: Capsule())
+        .upright(camera.controlRotationDegrees)
     }
 
     /// 左上角分辨率切换（点击循环 720P/1080P/4K，仿系统相机）。
@@ -89,6 +90,7 @@ struct ContentView: View {
                 .padding(.vertical, 6)
                 .padding(.horizontal, 12)
                 .background(.black.opacity(0.4), in: Capsule())
+                .upright(camera.controlRotationDegrees)
         }
         .disabled(camera.isRecording)
         .opacity(camera.isRecording ? 0.5 : 1)
@@ -104,6 +106,7 @@ struct ContentView: View {
                 .foregroundStyle(camera.selectedFlash == .off ? .white : .yellow)
                 .frame(width: 38, height: 38)
                 .background(.black.opacity(0.4), in: Circle())
+                .upright(camera.controlRotationDegrees)
         }
         .disabled(camera.isRecording)
         .opacity(camera.isRecording ? 0.5 : 1)
@@ -118,6 +121,7 @@ struct ContentView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
                     .background(.black.opacity(0.5), in: Capsule())
+                    .upright(camera.controlRotationDegrees)
                     .transition(.opacity)
             }
 
@@ -258,6 +262,7 @@ struct ContentView: View {
             active ? AnyShapeStyle(.yellow) : AnyShapeStyle(.black.opacity(0.4)),
             in: RoundedRectangle(cornerRadius: 10)
         )
+        .upright(camera.controlRotationDegrees)
     }
 
     /// 二级选项按钮（纯文字，selected 时高亮表示当前值）。
@@ -330,6 +335,7 @@ struct ContentView: View {
                         .foregroundStyle(.white)
                 }
             }
+            .upright(camera.controlRotationDegrees)
         }
         .disabled(camera.latestVideoURL == nil)
         .opacity(camera.latestVideoURL == nil ? 0.5 : 1)
@@ -351,6 +357,7 @@ struct ContentView: View {
                 .foregroundStyle(.white)
                 .frame(width: 50, height: 50)
                 .background(.black.opacity(0.4), in: Circle())
+                .upright(camera.controlRotationDegrees)
         }
     }
 
@@ -394,6 +401,22 @@ struct ContentView: View {
     private func timeString(_ t: TimeInterval) -> String {
         let total = Int(t)
         return String(format: "%02d:%02d", total / 60, total % 60)
+    }
+}
+
+/// 让控件随地平线“原地转正”：界面锁定竖屏，机身翻转时反向旋转图标。
+private struct UprightModifier: ViewModifier {
+    let degrees: Double
+    func body(content: Content) -> some View {
+        content
+            .rotationEffect(.degrees(degrees))
+            .animation(.easeInOut(duration: 0.25), value: degrees)
+    }
+}
+
+private extension View {
+    func upright(_ degrees: Double) -> some View {
+        modifier(UprightModifier(degrees: degrees))
     }
 }
 

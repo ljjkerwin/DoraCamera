@@ -199,6 +199,10 @@ final class CameraManager: NSObject, ObservableObject {
     private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
     private var rotationObservation: NSKeyValueObservation?
 
+    /// 控件需要旋转的角度（度，顺时针，归一化到 (-180,180]）。界面锁定竖屏，
+    /// 机身翻转时由它让按钮图标“原地转正”，始终相对地平线竖直。
+    @Published private(set) var controlRotationDegrees: Double = 0
+
     // MARK: - 设置持久化
 
     private static let kFrameRate = "selectedFrameRate"
@@ -243,13 +247,23 @@ final class CameraManager: NSObject, ObservableObject {
         guard let device = currentVideoDevice() else { return }
         let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
         rotationCoordinator = coordinator
-        orientationAngle = coordinator.videoRotationAngleForHorizonLevelCapture
+        updateOrientation(coordinator.videoRotationAngleForHorizonLevelCapture)
         rotationObservation = coordinator.observe(
             \.videoRotationAngleForHorizonLevelCapture, options: [.new]
         ) { [weak self] _, change in
             guard let angle = change.newValue else { return }
-            Task { @MainActor in self?.orientationAngle = angle }
+            Task { @MainActor in self?.updateOrientation(angle) }
         }
+    }
+
+    /// 由“水平正向”的拍摄角推导出成片旋转角与控件反向旋转角。
+    private func updateOrientation(_ captureAngle: CGFloat) {
+        orientationAngle = captureAngle
+        // 控件需相对竖屏(90°)反向旋转，才能在机身翻转后保持竖直。
+        var deg = 90 - Double(captureAngle)
+        while deg <= -180 { deg += 360 } // 归一化，按最短路径转动
+        while deg > 180 { deg -= 360 }
+        controlRotationDegrees = deg
     }
 
     /// 将指定旋转角写入录制输出连接（不支持的角度安全跳过）。
