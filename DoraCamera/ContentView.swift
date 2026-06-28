@@ -145,7 +145,6 @@ struct ContentView: View {
                 }
             }
         }
-        .padding(.bottom, 24)
         .animation(.easeInOut, value: camera.lastSaveMessage)
     }
 
