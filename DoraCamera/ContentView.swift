@@ -208,6 +208,8 @@ struct ContentView: View {
     @ViewBuilder
     private var optionsRow: some View {
         if let tool = expandedTool {
+            // 横屏时药丸旋转 90°，竖向尺寸变大；为其预留行高，否则会被 ScrollView 裁掉圆角。
+            let sideways = abs(abs(camera.controlRotationDegrees) - 90) < 1
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
                     switch tool {
@@ -235,6 +237,7 @@ struct ContentView: View {
                     }
                 }
                 .padding(.horizontal, 8)
+                .padding(.vertical, sideways ? 24 : 0)
             }
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
