@@ -256,7 +256,7 @@ struct ContentView: View {
                 .font(.system(size: 10, weight: .medium, design: .rounded))
                 .opacity(0.85)
             Text(value)
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .font(.system(size: 10, weight: .bold, design: .rounded))
         }
         .foregroundStyle(active ? .black : .white)
         .frame(minWidth: 46, minHeight: 34)
@@ -325,7 +325,7 @@ struct ContentView: View {
                         .foregroundStyle(.white)
                 }
             }
-            .frame(width: 44, height: 44)
+            .frame(width: 42, height: 42)
             .background(.black.opacity(0.4))
             .clipShape(Circle())
             .overlay {
@@ -359,7 +359,7 @@ struct ContentView: View {
             Image(systemName: "arrow.triangle.2.circlepath.camera")
                 .font(.title3)
                 .foregroundStyle(.white)
-                .frame(width: 44, height: 44)
+                .frame(width: 42, height: 42)
                 .background(.black.opacity(0.4), in: Circle())
                 .upright(camera.controlRotationDegrees)
         }
