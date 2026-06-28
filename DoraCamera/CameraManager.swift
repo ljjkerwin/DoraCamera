@@ -193,9 +193,11 @@ final class CameraManager: NSObject, ObservableObject {
     private var durationTimer: Timer?
     private var recordingStart: Date?
 
-    /// 当前设备方向对应的视频旋转角（90=竖屏）。随设备旋转实时更新，
-    /// 录制开始时写入输出连接，使成片方向与持机方向一致。
+    /// “拍出水平正向画面”所需的视频旋转角（90=竖屏）。由 RotationCoordinator
+    /// 随重力方向实时更新，录制开始时写入输出连接，使成片方向与持机方向一致。
     private var orientationAngle: CGFloat = 90
+    private var rotationCoordinator: AVCaptureDevice.RotationCoordinator?
+    private var rotationObservation: NSKeyValueObservation?
 
     // MARK: - 设置持久化
 
@@ -225,41 +227,28 @@ final class CameraManager: NSObject, ObservableObject {
         if let raw = d.string(forKey: Self.kFlash), let flash = FlashMode(rawValue: raw) {
             selectedFlash = flash
         }
-        startOrientationTracking()
     }
 
     deinit {
-        NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
+        rotationObservation?.invalidate()
     }
 
     // MARK: - 方向识别
 
-    /// 开始监听设备方向，并立即同步一次当前方向。
-    private func startOrientationTracking() {
-        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(deviceOrientationChanged),
-            name: UIDevice.orientationDidChangeNotification,
-            object: nil
-        )
-        deviceOrientationChanged()
-    }
-
-    @objc private func deviceOrientationChanged() {
-        guard let angle = Self.rotationAngle(for: UIDevice.current.orientation) else { return }
-        orientationAngle = angle // 平放/未知方向会被忽略，沿用上一次有效方向
-    }
-
-    /// 把设备方向映射为后置摄像头的视频旋转角（顺时针，单位度）。
-    /// landscapeLeft = 手机右侧朝上，对应 0°。
-    private nonisolated static func rotationAngle(for orientation: UIDeviceOrientation) -> CGFloat? {
-        switch orientation {
-        case .portrait: return 90
-        case .portraitUpsideDown: return 270
-        case .landscapeLeft: return 0    // 手机右侧朝上
-        case .landscapeRight: return 180 // 手机左侧朝上
-        default: return nil              // 平放 / faceUp / faceDown / unknown
+    /// 用 RotationCoordinator 跟踪重力方向，得到“拍出水平正向画面”所需的旋转角。
+    /// 即使界面锁定竖屏，它也能在横屏/倒置时给出正确角度（依据加速度计，而非
+    /// UIDevice.orientation——后者在近水平持机时会回报 faceUp/unknown，导致方向识别失败）。
+    /// 在会话配置完成、以及前后摄像头切换后调用（设备实例变化时需重建）。
+    private func setupRotationCoordinator() {
+        guard let device = currentVideoDevice() else { return }
+        let coordinator = AVCaptureDevice.RotationCoordinator(device: device, previewLayer: nil)
+        rotationCoordinator = coordinator
+        orientationAngle = coordinator.videoRotationAngleForHorizonLevelCapture
+        rotationObservation = coordinator.observe(
+            \.videoRotationAngleForHorizonLevelCapture, options: [.new]
+        ) { [weak self] _, change in
+            guard let angle = change.newValue else { return }
+            Task { @MainActor in self?.orientationAngle = angle }
         }
     }
 
@@ -346,7 +335,10 @@ final class CameraManager: NSObject, ObservableObject {
         if !session.isRunning {
             session.startRunning()
         }
-        Task { @MainActor in self.status = .configured }
+        Task { @MainActor in
+            self.setupRotationCoordinator() // 会话就绪后开始跟踪方向
+            self.status = .configured
+        }
     }
 
     private nonisolated func configureVideoConnection(position: AVCaptureDevice.Position, angle: CGFloat) {
@@ -562,6 +554,7 @@ final class CameraManager: NSObject, ObservableObject {
             self.applyFormat(fps: fps, resolution: res)
             self.applyExposure(iso: iso, shutter: shutter)
             self.applyContinuousAutoFocus()
+            Task { @MainActor in self.setupRotationCoordinator() } // 设备已更换，重建协调器
         }
     }
 
