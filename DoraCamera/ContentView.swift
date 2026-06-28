@@ -165,8 +165,8 @@ struct ContentView: View {
             toggle(.iso)
         } label: {
             toolButtonLabel(
-                icon: "circle.lefthalf.filled",
-                text: camera.selectedISO == 0 ? "ISO 自动" : "ISO \(camera.selectedISO)",
+                title: "ISO",
+                value: camera.selectedISO == 0 ? "自动" : "\(camera.selectedISO)",
                 active: expandedTool == .iso
             )
         }
@@ -180,8 +180,8 @@ struct ContentView: View {
             toggle(.frameRate)
         } label: {
             toolButtonLabel(
-                icon: "speedometer",
-                text: "\(camera.selectedFrameRate) FPS",
+                title: "FPS",
+                value: "\(camera.selectedFrameRate)",
                 active: expandedTool == .frameRate
             )
         }
@@ -195,8 +195,8 @@ struct ContentView: View {
             toggle(.shutter)
         } label: {
             toolButtonLabel(
-                icon: "timer",
-                text: camera.selectedShutter.seconds == nil ? "快门 自动" : camera.selectedShutter.label,
+                title: "快门",
+                value: camera.selectedShutter.seconds == nil ? "自动" : camera.selectedShutter.label,
                 active: expandedTool == .shutter
             )
         }
@@ -247,17 +247,18 @@ struct ContentView: View {
         }
     }
 
-    /// 工具按钮统一外观（active 时高亮表示其二级选项已展开）。
-    private func toolButtonLabel(icon: String, text: String, active: Bool = false) -> some View {
+    /// 工具按钮统一外观：上行类别名、下行当前值（active 时高亮表示其二级选项已展开）。
+    private func toolButtonLabel(title: String, value: String, active: Bool = false) -> some View {
         VStack(spacing: 2) {
-            Image(systemName: icon)
-                .font(.system(size: 14, weight: .semibold))
-            Text(text)
-                .font(.system(size: 9, weight: .semibold, design: .rounded))
+            Text(title)
+                .font(.system(size: 10, weight: .medium, design: .rounded))
+                .opacity(0.85)
+            Text(value)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
         }
         .foregroundStyle(active ? .black : .white)
-        .frame(minWidth: 46, minHeight: 38)
-        .padding(.horizontal, 6)
+        .frame(minWidth: 52, minHeight: 38)
+        .padding(.horizontal, 8)
         .background(
             active ? AnyShapeStyle(.yellow) : AnyShapeStyle(.black.opacity(0.4)),
             in: RoundedRectangle(cornerRadius: 10)
