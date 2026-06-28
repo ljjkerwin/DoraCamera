@@ -193,6 +193,10 @@ final class CameraManager: NSObject, ObservableObject {
     private var durationTimer: Timer?
     private var recordingStart: Date?
 
+    /// 当前设备方向对应的视频旋转角（90=竖屏）。随设备旋转实时更新，
+    /// 录制开始时写入输出连接，使成片方向与持机方向一致。
+    private var orientationAngle: CGFloat = 90
+
     // MARK: - 设置持久化
 
     private static let kFrameRate = "selectedFrameRate"
@@ -221,6 +225,50 @@ final class CameraManager: NSObject, ObservableObject {
         if let raw = d.string(forKey: Self.kFlash), let flash = FlashMode(rawValue: raw) {
             selectedFlash = flash
         }
+        startOrientationTracking()
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self, name: UIDevice.orientationDidChangeNotification, object: nil)
+    }
+
+    // MARK: - 方向识别
+
+    /// 开始监听设备方向，并立即同步一次当前方向。
+    private func startOrientationTracking() {
+        UIDevice.current.beginGeneratingDeviceOrientationNotifications()
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(deviceOrientationChanged),
+            name: UIDevice.orientationDidChangeNotification,
+            object: nil
+        )
+        deviceOrientationChanged()
+    }
+
+    @objc private func deviceOrientationChanged() {
+        guard let angle = Self.rotationAngle(for: UIDevice.current.orientation) else { return }
+        orientationAngle = angle // 平放/未知方向会被忽略，沿用上一次有效方向
+    }
+
+    /// 把设备方向映射为后置摄像头的视频旋转角（顺时针，单位度）。
+    /// landscapeLeft = 手机右侧朝上，对应 0°。
+    private nonisolated static func rotationAngle(for orientation: UIDeviceOrientation) -> CGFloat? {
+        switch orientation {
+        case .portrait: return 90
+        case .portraitUpsideDown: return 270
+        case .landscapeLeft: return 0    // 手机右侧朝上
+        case .landscapeRight: return 180 // 手机左侧朝上
+        default: return nil              // 平放 / faceUp / faceDown / unknown
+        }
+    }
+
+    /// 将指定旋转角写入录制输出连接（不支持的角度安全跳过）。
+    private nonisolated func applyRotationAngle(_ angle: CGFloat) {
+        guard let connection = movieOutput.connection(with: .video) else { return }
+        if connection.isVideoRotationAngleSupported(angle) {
+            connection.videoRotationAngle = angle
+        }
     }
 
     // MARK: - 权限与配置
@@ -240,8 +288,9 @@ final class CameraManager: NSObject, ObservableObject {
             let res = selectedResolution
             let iso = selectedISO
             let shutter = selectedShutter.seconds
+            let angle = orientationAngle
             sessionQueue.async { [weak self] in
-                self?.configureSession(withAudio: micOK, fps: fps, resolution: res, iso: iso, shutter: shutter)
+                self?.configureSession(withAudio: micOK, fps: fps, resolution: res, iso: iso, shutter: shutter, angle: angle)
             }
         }
     }
@@ -257,7 +306,7 @@ final class CameraManager: NSObject, ObservableObject {
         }
     }
 
-    private nonisolated func configureSession(withAudio: Bool, fps: Int, resolution: Resolution, iso: Int, shutter: Double?) {
+    private nonisolated func configureSession(withAudio: Bool, fps: Int, resolution: Resolution, iso: Int, shutter: Double?, angle: CGFloat) {
         session.beginConfiguration()
         session.sessionPreset = .high
 
@@ -286,7 +335,7 @@ final class CameraManager: NSObject, ObservableObject {
             return
         }
         session.addOutput(movieOutput)
-        configureVideoConnection(position: .back)
+        configureVideoConnection(position: .back, angle: angle)
 
         session.commitConfiguration()
 
@@ -300,10 +349,10 @@ final class CameraManager: NSObject, ObservableObject {
         Task { @MainActor in self.status = .configured }
     }
 
-    private nonisolated func configureVideoConnection(position: AVCaptureDevice.Position) {
+    private nonisolated func configureVideoConnection(position: AVCaptureDevice.Position, angle: CGFloat) {
         guard let connection = movieOutput.connection(with: .video) else { return }
-        if connection.isVideoRotationAngleSupported(90) {
-            connection.videoRotationAngle = 90 // 竖屏
+        if connection.isVideoRotationAngleSupported(angle) {
+            connection.videoRotationAngle = angle // 跟随设备方向
         }
         if connection.isVideoMirroringSupported {
             connection.isVideoMirrored = (position == .front)
@@ -487,6 +536,7 @@ final class CameraManager: NSObject, ObservableObject {
         let res = selectedResolution
         let iso = selectedISO
         let shutter = selectedShutter.seconds
+        let angle = orientationAngle
         sessionQueue.async { [weak self] in
             guard let self,
                   let currentDevice = self.currentVideoDevice(),
@@ -506,7 +556,7 @@ final class CameraManager: NSObject, ObservableObject {
             } else {
                 self.session.addInput(currentInput)
             }
-            self.configureVideoConnection(position: newPosition)
+            self.configureVideoConnection(position: newPosition, angle: angle)
             self.session.commitConfiguration()
 
             self.applyFormat(fps: fps, resolution: res)
@@ -528,8 +578,10 @@ final class CameraManager: NSObject, ObservableObject {
                 .appendingPathComponent(UUID().uuidString)
                 .appendingPathExtension("mov")
             let torch = selectedFlash.torchMode
+            let angle = orientationAngle
             sessionQueue.async { [weak self] in
                 guard let self else { return }
+                self.applyRotationAngle(angle) // 录制前按当前持机方向锁定成片方向
                 self.setTorch(torch) // 按闪光灯设置点亮（off/auto/on）
                 self.movieOutput.startRecording(to: url, recordingDelegate: self)
             }
