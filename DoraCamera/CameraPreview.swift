@@ -11,8 +11,12 @@ import UIKit
 
 struct CameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
+    let currentZoom: Double
     /// 点按对焦回调，参数为设备坐标系（0~1）的兴趣点。
     var onFocus: ((CGPoint) -> Void)?
+    var onZoomBegan: (() -> Void)?
+    var onZoomChanged: ((Double) -> Void)?
+    var onZoomEnded: (() -> Void)?
 
     func makeUIView(context: Context) -> PreviewView {
         let view = PreviewView()
@@ -20,13 +24,25 @@ struct CameraPreview: UIViewRepresentable {
         // 用 resizeAspect 保持画面比例不被裁切，配合外层 9:16 容器即可呈现完整 16:9 画面。
         view.videoPreviewLayer.videoGravity = .resizeAspect
         view.onFocus = onFocus
+        view.onZoomBegan = onZoomBegan
+        view.onZoomChanged = onZoomChanged
+        view.onZoomEnded = onZoomEnded
+        view.currentZoom = currentZoom
+        
         let tap = UITapGestureRecognizer(target: view, action: #selector(PreviewView.handleTap(_:)))
         view.addGestureRecognizer(tap)
+        
+        let pinch = UIPinchGestureRecognizer(target: view, action: #selector(PreviewView.handlePinch(_:)))
+        view.addGestureRecognizer(pinch)
         return view
     }
 
     func updateUIView(_ uiView: PreviewView, context: Context) {
         uiView.onFocus = onFocus
+        uiView.onZoomBegan = onZoomBegan
+        uiView.onZoomChanged = onZoomChanged
+        uiView.onZoomEnded = onZoomEnded
+        uiView.currentZoom = currentZoom
     }
 
     final class PreviewView: UIView {
@@ -35,6 +51,26 @@ struct CameraPreview: UIViewRepresentable {
             layer as! AVCaptureVideoPreviewLayer
         }
         var onFocus: ((CGPoint) -> Void)?
+        var onZoomBegan: (() -> Void)?
+        var onZoomChanged: ((Double) -> Void)?
+        var onZoomEnded: (() -> Void)?
+        var currentZoom: Double = 1.0
+        private var initialZoomFactor: Double = 1.0
+
+        @objc func handlePinch(_ gr: UIPinchGestureRecognizer) {
+            switch gr.state {
+            case .began:
+                initialZoomFactor = currentZoom
+                onZoomBegan?()
+            case .changed:
+                let targetZoom = initialZoomFactor * Double(gr.scale)
+                onZoomChanged?(targetZoom)
+            case .ended, .cancelled:
+                onZoomEnded?()
+            default:
+                break
+            }
+        }
 
         @objc func handleTap(_ gr: UITapGestureRecognizer) {
             let location = gr.location(in: self)

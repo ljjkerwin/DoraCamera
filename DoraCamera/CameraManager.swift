@@ -28,13 +28,13 @@ final class CameraManager: NSObject, ObservableObject {
     @Published var isRecording = false
     @Published var recordedDuration: TimeInterval = 0
     /// 可选帧率（含高帧率，以及低于官方相机的 24fps 的低帧率）
-    @Published var availableFrameRates: [Int] = [60, 30, 24, 18, 15, 12, 8]
+    @Published var availableFrameRates: [Int] = [60, 30, 24, 18, 15, 12, 10, 8, 6, 4]
     @Published var selectedFrameRate: Int = 60 {
         didSet {
             guard selectedFrameRate != oldValue else { return }
             UserDefaults.standard.set(selectedFrameRate, forKey: Self.kFrameRate)
-            sessionQueue.async { [weak self, fps = selectedFrameRate, res = selectedResolution, iso = selectedISO, shutter = selectedShutter.seconds] in
-                self?.applyFormat(fps: fps, resolution: res)
+            sessionQueue.async { [weak self, fps = selectedFrameRate, res = selectedResolution, iso = selectedISO, shutter = selectedShutter.seconds, zoom = selectedZoomFactor] in
+                self?.applyFormat(fps: fps, resolution: res, zoom: zoom)
                 self?.applyExposure(iso: iso, shutter: shutter) // 切换格式会重置曝光，需重新应用
             }
         }
@@ -60,6 +60,7 @@ final class CameraManager: NSObject, ObservableObject {
         /// 由快到慢的预设。整秒用 ‟n″ 表示。
         static let presets: [ShutterSpeed] = [
             .auto,
+            ShutterSpeed(label: "1/4", seconds: 1.0 / 4),
             ShutterSpeed(label: "1/6", seconds: 1.0 / 6),
             ShutterSpeed(label: "1/8", seconds: 1.0 / 8),
             ShutterSpeed(label: "1/10", seconds: 1.0 / 10),
@@ -90,6 +91,24 @@ final class CameraManager: NSObject, ObservableObject {
         }
     }
 
+    struct ZoomOption: Hashable, Identifiable, Sendable {
+        var id: Double { factor }
+        let label: String
+        let factor: Double
+    }
+
+    /// 可选变焦倍数
+    @Published var availableZoomOptions: [ZoomOption] = []
+    @Published var selectedZoomFactor: Double = 1.0 {
+        didSet {
+            guard selectedZoomFactor != oldValue else { return }
+            if isZoomGestureActive { return } // 正在进行双指缩放，忽略 didSet (已由手势处理器实时调用 instant applyZoom)
+            sessionQueue.async { [weak self, factor = selectedZoomFactor] in
+                self?.applyZoom(factor: factor, smooth: true)
+            }
+        }
+    }
+
     /// 分辨率档位（影响采集格式选择）。
     enum Resolution: String, CaseIterable, Sendable {
         case hd1080, uhd4k
@@ -112,8 +131,8 @@ final class CameraManager: NSObject, ObservableObject {
         didSet {
             guard selectedResolution != oldValue else { return }
             UserDefaults.standard.set(selectedResolution.rawValue, forKey: Self.kResolution)
-            sessionQueue.async { [weak self, fps = selectedFrameRate, res = selectedResolution, iso = selectedISO, shutter = selectedShutter.seconds] in
-                self?.applyFormat(fps: fps, resolution: res)
+            sessionQueue.async { [weak self, fps = selectedFrameRate, res = selectedResolution, iso = selectedISO, shutter = selectedShutter.seconds, zoom = selectedZoomFactor] in
+                self?.applyFormat(fps: fps, resolution: res, zoom: zoom)
                 self?.applyExposure(iso: iso, shutter: shutter) // 切换格式会重置曝光
             }
         }
@@ -192,6 +211,7 @@ final class CameraManager: NSObject, ObservableObject {
 
     private var durationTimer: Timer?
     private var recordingStart: Date?
+    private var isZoomGestureActive = false
 
     /// “拍出水平正向画面”所需的视频旋转角（90=竖屏）。由 RotationCoordinator
     /// 随重力方向实时更新，录制开始时写入输出连接，使成片方向与持机方向一致。
@@ -292,8 +312,9 @@ final class CameraManager: NSObject, ObservableObject {
             let iso = selectedISO
             let shutter = selectedShutter.seconds
             let angle = orientationAngle
+            let zoom = selectedZoomFactor
             sessionQueue.async { [weak self] in
-                self?.configureSession(withAudio: micOK, fps: fps, resolution: res, iso: iso, shutter: shutter, angle: angle)
+                self?.configureSession(withAudio: micOK, fps: fps, resolution: res, iso: iso, shutter: shutter, angle: angle, zoom: zoom)
             }
         }
     }
@@ -309,7 +330,7 @@ final class CameraManager: NSObject, ObservableObject {
         }
     }
 
-    private nonisolated func configureSession(withAudio: Bool, fps: Int, resolution: Resolution, iso: Int, shutter: Double?, angle: CGFloat) {
+    private nonisolated func configureSession(withAudio: Bool, fps: Int, resolution: Resolution, iso: Int, shutter: Double?, angle: CGFloat, zoom: Double) {
         session.beginConfiguration()
         session.sessionPreset = .high
 
@@ -342,8 +363,8 @@ final class CameraManager: NSObject, ObservableObject {
 
         session.commitConfiguration()
 
-        applyFormat(fps: fps, resolution: resolution)
-        applyExposure(iso: iso, shutter: shutter) // 应用恢复的 ISO/快门
+        applyFormat(fps: fps, resolution: resolution, zoom: zoom)
+        applyExposure(iso: iso, shutter: shutter) // 应用恢复 of ISO/shutter
         applyContinuousAutoFocus() // 显式开启连续自动对焦（不依赖设备默认）
 
         if !session.isRunning {
@@ -351,6 +372,11 @@ final class CameraManager: NSObject, ObservableObject {
         }
         Task { @MainActor in
             self.setupRotationCoordinator() // 会话就绪后开始跟踪方向
+            self.updateZoomOptions()
+            let newZoom = self.selectedZoomFactor
+            self.sessionQueue.async { [weak self] in
+                self?.applyZoom(factor: newZoom, smooth: false)
+            }
             self.status = .configured
         }
     }
@@ -368,7 +394,7 @@ final class CameraManager: NSObject, ObservableObject {
     // MARK: - 帧率控制（核心）
 
     /// 按帧率 + 分辨率挑选最佳采集格式并锁定帧时长。
-    private nonisolated func applyFormat(fps: Int, resolution: Resolution) {
+    private nonisolated func applyFormat(fps: Int, resolution: Resolution, zoom: Double) {
         guard let device = currentVideoDevice() else { return }
         let target = Double(fps)
 
@@ -382,6 +408,11 @@ final class CameraManager: NSObject, ObservableObject {
             let duration = CMTime(value: 1, timescale: CMTimeScale(fps))
             device.activeVideoMinFrameDuration = duration
             device.activeVideoMaxFrameDuration = duration
+
+            // 应用 zoom factor，防止系统因切换 activeFormat 而将其重置为 1.0
+            let clamped = min(max(zoom, Double(device.minAvailableVideoZoomFactor)), Double(device.maxAvailableVideoZoomFactor))
+            device.videoZoomFactor = CGFloat(clamped)
+
             device.unlockForConfiguration()
         } catch {
             Task { @MainActor in
@@ -509,9 +540,10 @@ final class CameraManager: NSObject, ObservableObject {
 
     private nonisolated static func bestCamera(for position: AVCaptureDevice.Position) -> AVCaptureDevice? {
         let types: [AVCaptureDevice.DeviceType] = [
-            .builtInWideAngleCamera,
+            .builtInTripleCamera,
             .builtInDualCamera,
-            .builtInTripleCamera
+            .builtInDualWideCamera,
+            .builtInWideAngleCamera
         ]
         let discovery = AVCaptureDevice.DiscoverySession(
             deviceTypes: types, mediaType: .video, position: position
@@ -565,10 +597,123 @@ final class CameraManager: NSObject, ObservableObject {
             self.configureVideoConnection(position: newPosition, angle: angle)
             self.session.commitConfiguration()
 
-            self.applyFormat(fps: fps, resolution: res)
+            self.applyFormat(fps: fps, resolution: res, zoom: 1.0)
             self.applyExposure(iso: iso, shutter: shutter)
             self.applyContinuousAutoFocus()
-            Task { @MainActor in self.setupRotationCoordinator() } // 设备已更换，重建协调器
+            Task { @MainActor in
+                self.setupRotationCoordinator()
+                self.updateZoomOptions()
+                let newZoom = self.selectedZoomFactor
+                self.sessionQueue.async { [weak self] in
+                    self?.applyZoom(factor: newZoom, smooth: false)
+                }
+            }
+        }
+    }
+
+    // MARK: - 变焦控制
+
+    private nonisolated func applyZoom(factor: Double, smooth: Bool = false) {
+        guard let device = currentVideoDevice() else { return }
+        do {
+            try device.lockForConfiguration()
+            let clamped = min(max(factor, Double(device.minAvailableVideoZoomFactor)), Double(device.maxAvailableVideoZoomFactor))
+            if smooth {
+                let current = Double(device.videoZoomFactor)
+                let diff = abs(clamped - current)
+                if diff > 0.01 {
+                    let duration = 0.3 // Transition duration in seconds
+                    let rate = max(4.0, min(32.0, diff / duration)) // Linear rate (zoom factor per second)
+                    device.ramp(toVideoZoomFactor: CGFloat(clamped), withRate: Float(rate))
+                } else {
+                    device.videoZoomFactor = CGFloat(clamped)
+                }
+            } else {
+                device.cancelVideoZoomRamp()
+                device.videoZoomFactor = CGFloat(clamped)
+            }
+            device.unlockForConfiguration()
+        } catch { /* 忽略变焦设置失败 */ }
+    }
+
+    // MARK: - 手势变焦支持
+
+    func beginZoomGesture() {
+        isZoomGestureActive = true
+    }
+
+    func updateZoomGesture(factor: Double) {
+        guard let device = currentVideoDevice() else { return }
+        let minZ = Double(device.minAvailableVideoZoomFactor)
+        let maxZ = Double(device.maxAvailableVideoZoomFactor)
+        let clamped = min(max(factor, minZ), maxZ)
+        
+        selectedZoomFactor = clamped
+        
+        sessionQueue.async { [weak self] in
+            self?.applyZoom(factor: clamped, smooth: false) // 手势拖动时，使用非平滑（即时响应）模式
+        }
+    }
+
+    func endZoomGesture() {
+        isZoomGestureActive = false
+    }
+
+    private func updateZoomOptions() {
+        guard let device = currentVideoDevice() else {
+            availableZoomOptions = [ZoomOption(label: "1x", factor: 1.0)]
+            selectedZoomFactor = 1.0
+            return
+        }
+
+        var options: [ZoomOption] = []
+        let minZoom = Double(device.minAvailableVideoZoomFactor)
+        
+        let switchFactors = device.virtualDeviceSwitchOverVideoZoomFactors.map { Double(truncating: $0) }
+        let constituents = device.constituentDevices
+        
+        let hasUltraWide = constituents.contains { $0.deviceType == .builtInUltraWideCamera }
+        
+        if hasUltraWide {
+            options.append(ZoomOption(label: "0.5x", factor: minZoom))
+            
+            if !switchFactors.isEmpty {
+                let wideFactor = switchFactors[0]
+                options.append(ZoomOption(label: "1x", factor: wideFactor))
+                
+                if switchFactors.count > 1 {
+                    let teleFactor = switchFactors[1]
+                    let teleMultiple = Int(round(teleFactor / wideFactor))
+                    options.append(ZoomOption(label: "\(teleMultiple)x", factor: teleFactor))
+                }
+            } else {
+                options.append(ZoomOption(label: "1x", factor: minZoom * 2.0))
+            }
+        } else {
+            options.append(ZoomOption(label: "1x", factor: minZoom))
+            
+            if !switchFactors.isEmpty {
+                let teleFactor = switchFactors[0]
+                let teleMultiple = Int(round(teleFactor / minZoom))
+                options.append(ZoomOption(label: "\(teleMultiple)x", factor: teleFactor))
+            }
+        }
+        
+        var uniqueOptions: [ZoomOption] = []
+        var seenFactors = Set<Double>()
+        for opt in options {
+            let rounded = (opt.factor * 100).rounded() / 100
+            if !seenFactors.contains(rounded) {
+                seenFactors.insert(rounded)
+                uniqueOptions.append(opt)
+            }
+        }
+        self.availableZoomOptions = uniqueOptions.sorted { $0.factor < $1.factor }
+        
+        if let wideOpt = self.availableZoomOptions.first(where: { $0.label == "1x" }) {
+            self.selectedZoomFactor = wideOpt.factor
+        } else {
+            self.selectedZoomFactor = minZoom
         }
     }
 
