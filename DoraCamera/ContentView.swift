@@ -17,17 +17,14 @@ struct ContentView: View {  // 定义根视图结构体，遵循 View 协议
     var body: some View {           // View 协议要求的 body，描述该视图的内容
         ZStack {                    // 将子视图叠加在同一层（黑色背景在最底层）
             Color.black.ignoresSafeArea()   // 整屏黑色背景，忽略安全区域延伸到边缘
-
-            switch camera.status {              // 根据相机当前状态决定展示哪个子视图
-            case .configured, .unconfigured:   // 已配置或首次未配置时，都展示相机界面（配置在 onAppear 触发）
-                cameraUI
-            case .unauthorized:                // 用户拒绝相机权限时，展示引导去设置的视图
-                permissionDenied
-            case .failed(let message):         // 相机初始化失败时，展示错误信息
-                errorView(message)
-            }
+            // 无论权限/错误状态如何，始终渲染完整的相机界面框架
+            cameraUI
         }
-        .onAppear { camera.configure() }    // 视图出现时启动相机配置流程（申请权限、创建 session）
+        .onAppear {
+            #if !targetEnvironment(simulator)
+            camera.configure()  // 真机上启动相机配置流程（申请权限、创建 session）
+            #endif
+        }
         .onDisappear { camera.stopSession() }   // 视图消失时停止 session，释放摄像头资源
         .statusBarHidden()  // 隐藏顶部状态栏，保持全屏沉浸感
     }
@@ -36,14 +33,7 @@ struct ContentView: View {  // 定义根视图结构体，遵循 View 协议
 
     private var cameraUI: some View {
         ZStack(alignment: .top) {   // 子视图叠加，统一顶部对齐
-            CameraPreview(
-                session: camera.session,
-                currentZoom: camera.selectedZoomFactor,
-                onFocus: { camera.focus(at: $0) },
-                onZoomBegan: { camera.beginZoomGesture() },
-                onZoomChanged: { camera.updateZoomGesture(factor: $0) },
-                onZoomEnded: { camera.endZoomGesture() }
-            )   // 相机预览层，点击对焦，双指缩放
+            cameraPreviewArea   // 预览区：正常时显示实时画面，异常时显示错误提示
                 .aspectRatio(9.0 / 16.0, contentMode: .fit)     // 固定 9:16 宽高比，防止预览画面拉伸
                 .frame(maxWidth: .infinity, alignment: .top)     // 横向撑满、顶部对齐
 
@@ -52,6 +42,42 @@ struct ContentView: View {  // 定义根视图结构体，遵循 View 协议
                 Spacer()        // 弹性空隙，将底部控件推到最底部
                 bottomControls  // 底部控件区域（工具行、录制按钮等）
             }
+        }
+    }
+
+    /// 相机预览区域：模拟器显示内置示例图；真机显示实时取景与异常提示。
+    @ViewBuilder
+    private var cameraPreviewArea: some View {
+        ZStack {
+            #if targetEnvironment(simulator)
+            // iOS Simulator 没有可用的设备摄像头。使用固定图像，便于制作截图和检查控件布局。
+            Image("SimulatorCameraPreview")
+                .resizable()
+                .scaledToFill()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+                .accessibilityHidden(true)
+            #else
+            // 实时预览层：始终存在，无 session 数据时自然显示黑屏
+            CameraPreview(
+                session: camera.session,
+                currentZoom: camera.selectedZoomFactor,
+                onFocus: { camera.focus(at: $0) },
+                onZoomBegan: { camera.beginZoomGesture() },
+                onZoomChanged: { camera.updateZoomGesture(factor: $0) },
+                onZoomEnded: { camera.endZoomGesture() }
+            )
+
+            // 异常状态：在预览区中央覆盖提示，不破坏底部控件布局
+            switch camera.status {
+            case .unauthorized:
+                permissionDeniedOverlay
+            case .failed(let message):
+                errorOverlay(message)
+            default:
+                EmptyView()
+            }
+            #endif
         }
     }
 
@@ -397,39 +423,45 @@ struct ContentView: View {  // 定义根视图结构体，遵循 View 协议
 
     // MARK: - 其它状态
 
-    private var permissionDenied: some View {
-        VStack(spacing: 16) {   // 垂直排列：图标、标题、说明文字、跳转按钮，间距 16pt
-            Image(systemName: "camera.fill")    // 相机图标，表明是相机权限问题
-                .font(.largeTitle)              // 大号图标
-                .foregroundStyle(.white)        // 白色
+    /// 权限被拒时，在预览区中央显示引导提示（叠加在黑色预览画面上）。
+    private var permissionDeniedOverlay: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "camera.fill")
+                .font(.largeTitle)
+                .foregroundStyle(.white)
             Text("无法访问相机")
-                .font(.headline)                // 标题字体
-                .foregroundStyle(.white)        // 白色
+                .font(.headline)
+                .foregroundStyle(.white)
             Text("请在「设置 > 隐私 > 相机」中允许 DoraCamera 使用相机和麦克风。")
-                .font(.subheadline)             // 副标题字体
-                .foregroundStyle(.white.opacity(0.7))   // 70% 白色，比标题略淡
-                .multilineTextAlignment(.center)        // 多行居中对齐
+                .font(.subheadline)
+                .foregroundStyle(.white.opacity(0.7))
+                .multilineTextAlignment(.center)
             Button("打开设置") {
-                if let url = URL(string: UIApplication.openSettingsURLString) { // 获取系统设置页的 URL
-                    UIApplication.shared.open(url)  // 跳转到系统设置，让用户手动开启权限
+                if let url = URL(string: UIApplication.openSettingsURLString) {
+                    UIApplication.shared.open(url)
                 }
             }
-            .buttonStyle(.borderedProminent)    // 使用系统填充样式按钮，视觉突出
+            .buttonStyle(.borderedProminent)
         }
-        .padding()  // 四周加默认内边距，防止文字贴边
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)   // 撑满预览区，确保内容居中
+        .background(.black.opacity(0.6))                    // 半透明遮罩，让错误提示更易读
     }
 
-    private func errorView(_ message: String) -> some View {
-        VStack(spacing: 12) {   // 垂直排列：警告图标 + 错误信息，间距 12pt
-            Image(systemName: "exclamationmark.triangle.fill")  // 警告三角图标
-                .font(.largeTitle)          // 大号图标
-                .foregroundStyle(.yellow)   // 黄色，与错误语义匹配
-            Text(message)                   // 显示具体错误信息字符串
-                .font(.subheadline)         // 副标题字体
-                .foregroundStyle(.white)    // 白色文字
-                .multilineTextAlignment(.center)    // 多行居中对齐
+    /// 相机初始化失败时，在预览区中央显示错误信息。
+    private func errorOverlay(_ message: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.largeTitle)
+                .foregroundStyle(.yellow)
+            Text(message)
+                .font(.subheadline)
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
         }
-        .padding()  // 四周加默认内边距
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)   // 撑满预览区，确保内容居中
+        .background(.black.opacity(0.6))                    // 半透明遮罩
     }
 
     private func timeString(_ t: TimeInterval) -> String {  // 将秒数转换为 MM:SS 格式字符串

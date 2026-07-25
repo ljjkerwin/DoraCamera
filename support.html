@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="哆啦相机技术支持与常见问题">
+  <title>技术支持｜哆啦相机</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #1d1d1f;
+      --muted: #6e6e73;
+      --line: #e5e5ea;
+      --accent: #007aff;
+      --surface: #ffffff;
+      --page: #f5f5f7;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--page);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      font-size: 16px;
+      line-height: 1.8;
+    }
+
+    main {
+      width: min(760px, calc(100% - 32px));
+      margin: 48px auto;
+      padding: 48px 56px 56px;
+      background: var(--surface);
+      border-radius: 20px;
+      box-shadow: 0 12px 36px rgb(0 0 0 / 8%);
+    }
+
+    header { border-bottom: 1px solid var(--line); padding-bottom: 28px; }
+    h1 { margin: 0; font-size: clamp(32px, 6vw, 42px); line-height: 1.2; letter-spacing: -0.04em; }
+    .subtitle { margin: 12px 0 0; color: var(--muted); font-size: 18px; }
+    section { margin-top: 36px; }
+    h2 { margin: 0 0 12px; font-size: 21px; line-height: 1.4; letter-spacing: -0.015em; }
+    p { margin: 0; }
+    p + p { margin-top: 14px; }
+    ol { margin: 10px 0 0; padding-left: 1.35em; }
+    li + li { margin-top: 8px; }
+    details { padding: 18px 0; border-top: 1px solid var(--line); }
+    details:last-child { border-bottom: 1px solid var(--line); }
+    summary { cursor: pointer; font-weight: 600; }
+    details p { margin: 12px 0 0; color: var(--muted); }
+    a { color: var(--accent); }
+    .note { padding: 18px 20px; background: #f0f7ff; border-radius: 12px; color: #244b70; }
+    footer { margin-top: 42px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
+
+    @media (max-width: 600px) {
+      main { width: 100%; margin: 0; padding: 36px 24px 40px; border-radius: 0; min-height: 100vh; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>技术支持</h1>
+      <p class="subtitle">哆啦相机</p>
+    </header>
+
+    <section>
+      <h2>使用帮助</h2>
+      <p>哆啦相机可让您以不同帧率、分辨率、快门、ISO 和变焦设置录制视频。录制完成后，视频会保存至系统照片图库。</p>
+    </section>
+
+    <section>
+      <h2>常见问题</h2>
+      <details>
+        <summary>为什么无法打开相机？</summary>
+        <p>请前往“设置 &gt; 隐私与安全性 &gt; 相机”，确认已允许哆啦相机访问相机。若仍无法使用，请关闭应用后重新打开。</p>
+      </details>
+      <details>
+        <summary>为什么录制的视频没有声音？</summary>
+        <p>请前往“设置 &gt; 隐私与安全性 &gt; 麦克风”，允许哆啦相机使用麦克风。若已授予权限，请重新启动应用后再次录制。</p>
+      </details>
+      <details>
+        <summary>为什么视频没有保存到照片？</summary>
+        <p>请确认已允许哆啦相机“添加照片”。可在“设置 &gt; 隐私与安全性 &gt; 照片”中检查权限；同时请确保设备有足够的存储空间。</p>
+      </details>
+      <details>
+        <summary>如何切换帧率、分辨率或镜头？</summary>
+        <p>在录制前，点击屏幕中的 FPS、快门、ISO 或变焦控制可展开选项；点击左上角分辨率可在可用分辨率间切换，点击右下角图标可切换前后摄像头。不同设备支持的能力可能不同。</p>
+      </details>
+      <details>
+        <summary>录制的视频存在哪里？</summary>
+        <p>录制完成后，视频会保存到您的系统照片图库。应用也会在设备本地保留最近录制内容的预览信息，不会上传至服务器。</p>
+      </details>
+    </section>
+
+    <section>
+      <h2>问题排查</h2>
+      <ol>
+        <li>确认设备运行的是受支持的 iOS 或 iPadOS 版本。</li>
+        <li>检查相机、麦克风与照片权限是否已开启。</li>
+        <li>关闭并重新打开应用，或重新启动设备后再试。</li>
+        <li>确认设备存储空间充足，并将应用更新至最新版本。</li>
+      </ol>
+    </section>
+
+    <section>
+      <h2>联系支持</h2>
+      <p class="note">如上述方法无法解决问题，请通过 App Store 产品页面中列示的开发者联系方式提交反馈。为便于排查，请说明设备型号、系统版本、应用版本及问题出现的步骤。</p>
+    </section>
+
+    <footer>
+      <a href="/privacy-policy.html">隐私政策</a>
+      <span aria-hidden="true"> · </span>
+      © 2026 哆啦相机
+    </footer>
+  </main>
+</body>
+</html>

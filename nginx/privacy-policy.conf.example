@@ -1,0 +1,48 @@
+# 将 YOUR_DOMAIN 替换为实际域名，并将 /var/www/doracamera 替换为服务器上的部署目录。
+# 将 privacy-policy.html 上传到该目录后，启用此站点配置。
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name YOUR_DOMAIN;
+
+    # HTTP 自动跳转到 HTTPS；申请证书前可暂时注释此 server 块。
+    return 301 https://$host$request_uri;
+}
+
+server {
+    listen 443 ssl http2;
+    listen [::]:443 ssl http2;
+    server_name YOUR_DOMAIN;
+
+    # 由 Certbot 申请证书后填写或让 Certbot 自动写入。
+    ssl_certificate /etc/letsencrypt/live/YOUR_DOMAIN/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/YOUR_DOMAIN/privkey.pem;
+    include /etc/letsencrypt/options-ssl-nginx.conf;
+    ssl_dhparam /etc/letsencrypt/ssl-dhparams.pem;
+
+    root /var/www/doracamera;
+    index privacy-policy.html;
+
+    location = / {
+        try_files /privacy-policy.html =404;
+    }
+
+    location = /privacy-policy.html {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=3600" always;
+    }
+
+    location = /support {
+        try_files /support.html =404;
+    }
+
+    location = /support.html {
+        try_files $uri =404;
+        add_header Cache-Control "public, max-age=3600" always;
+    }
+
+    location / {
+        return 404;
+    }
+}
